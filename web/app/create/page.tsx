@@ -26,13 +26,13 @@ const MAX_DEV_BUY_WEI = parseEther("0.06");
  */
 const CREATOR_HALF_PCT = 50;
 /**
- * Largest creator cut a reward launch accepts. The pad rejects exactly
- * CREATOR_HALF_PCT (`creatorFeeBps >= CREATOR_FEE_SHARE_BPS -> InvalidConfig`),
- * because that pays holders zero while the token still carries the holder-rewards
- * badge. Keep the slider strictly inside the contract's bound so the form cannot
- * offer a launch that reverts.
+ * Largest creator cut a reward launch accepts — mirrors
+ * `PotatoPad.MAX_REWARD_CREATOR_FEE_BPS` (2500). Holders are therefore always
+ * left at least the same again, so the holder-rewards badge always means a
+ * materially real share. Anything above this reverts InvalidConfig, so the
+ * slider must not offer it.
  */
-const MAX_CREATOR_CUT_PCT = CREATOR_HALF_PCT - 5;
+const MAX_CREATOR_CUT_PCT = 25;
 
 const inputCls =
   "w-full rounded-lg border border-neutral-800 bg-black px-3 py-2.5 text-sm text-neutral-100 placeholder-neutral-700 outline-none transition-colors focus:border-neutral-600";

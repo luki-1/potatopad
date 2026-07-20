@@ -20,8 +20,11 @@ const DEAD = "0x000000000000000000000000000000000000dead";
 
 /** Creator's cut of TOTAL weth fees; holders get 5000 minus this. */
 const BPS_ALL_TO_HOLDERS = 0;
-const BPS_EVEN_SPLIT = 2500;
-/** Rejected: pays holders zero while still carrying the holder-rewards badge. */
+/** The cap: creator 25% of all fees, holders the same again. */
+const BPS_MAX_CREATOR = 2500;
+/** Rejected — above the cap, holders would be left a token share. */
+const BPS_OVER_CAP = 2600;
+/** Rejected — pays holders zero while still carrying the holder-rewards badge. */
 const BPS_NONE_TO_HOLDERS = 5000;
 
 const saltFor = (s: string) => ethers.id(s);
@@ -84,9 +87,8 @@ async function launchReward(creatorFeeBps: number) {
 }
 
 const allToHolders = () => launchReward(BPS_ALL_TO_HOLDERS);
-const evenSplit = () => launchReward(BPS_EVEN_SPLIT);
-/** The largest creator cut that still leaves holders a real slice. */
-const capSplit = () => launchReward(BPS_NONE_TO_HOLDERS - 100);
+/** The largest creator cut a reward launch accepts. */
+const evenSplit = () => launchReward(BPS_MAX_CREATOR);
 
 async function buy(ctx: any, buyer: any, tokenAddr: string, value: bigint) {
   const deadline = (await ethers.provider.getBlock("latest"))!.timestamp + 600;
@@ -144,11 +146,11 @@ describe("PotatoRewardToken (fees to holders)", () => {
 
       const terms = await pad.rewardTerms(tokenAddr);
       expect(terms.enabled).to.equal(true);
-      expect(terms.creatorFeeBps).to.equal(BPS_EVEN_SPLIT);
+      expect(terms.creatorFeeBps).to.equal(BPS_MAX_CREATOR);
 
       const rc = await locker.rewardConfig(info.lpTokenId);
       expect(rc.token).to.equal(tokenAddr);
-      expect(rc.creatorBps).to.equal(BPS_EVEN_SPLIT);
+      expect(rc.creatorBps).to.equal(BPS_MAX_CREATOR);
 
       expect(await token.isHolderRewardToken()).to.equal(true);
       // Still an ownerless, fixed-supply PotatoToken underneath.
@@ -164,36 +166,34 @@ describe("PotatoRewardToken (fees to holders)", () => {
       await expect(
         ctx.pad
           .connect(ctx.creator)
-          .createRewardToken("Yam", "YAM", NO_META, saltFor("Yam"), BPS_EVEN_SPLIT)
+          .createRewardToken("Yam", "YAM", NO_META, saltFor("Yam"), BPS_MAX_CREATOR)
       )
         .to.emit(ctx.pad, "RewardTokenLaunched")
-        .withArgs(anyAddress, ctx.creator.address, BPS_EVEN_SPLIT, 2500);
+        .withArgs(anyAddress, ctx.creator.address, BPS_MAX_CREATOR, 2500);
     });
 
-    it("rejects a creator cut at or above the creator half", async () => {
+    it("caps the creator's cut at a quarter of all fees", async () => {
       const ctx = await loadFixture(deployPad);
-      // Above the half would underflow the split...
-      await expect(
-        ctx.pad.connect(ctx.creator).createRewardToken("Yam", "YAM", NO_META, saltFor("Yam"), 5001)
-      ).to.be.revertedWithCustomError(ctx.pad, "InvalidConfig");
+      expect(await ctx.pad.MAX_REWARD_CREATOR_FEE_BPS()).to.equal(BPS_MAX_CREATOR);
 
-      // ...and EXACTLY the half pays holders zero while the token still reports
-      // isHolderRewardToken() and carries the badge wherever it is listed. On a
-      // permissionless pad that badge is the marketing, so this would be a
-      // ready-made deceptive launch. createToken() is the honest way to take the
-      // whole creator half.
+      // Exactly the cap is fine — creator 25%, holders 25%.
       await expect(
         ctx.pad
           .connect(ctx.creator)
-          .createRewardToken("Yam", "YAM", NO_META, saltFor("Yam"), BPS_NONE_TO_HOLDERS)
-      ).to.be.revertedWithCustomError(ctx.pad, "InvalidConfig");
-
-      // The largest cut that still leaves holders something must work.
-      await expect(
-        ctx.pad
-          .connect(ctx.creator)
-          .createRewardToken("Yam", "YAM", NO_META, saltFor("Yam"), BPS_NONE_TO_HOLDERS - 1)
+          .createRewardToken("Yam", "YAM", NO_META, saltFor("cap"), BPS_MAX_CREATOR)
       ).to.emit(ctx.pad, "RewardTokenLaunched");
+
+      // One basis point over is not. The badge is marketing on a permissionless
+      // pad, so a rewards launch must always leave holders a materially real
+      // share; createToken() exists for anyone wanting more.
+      for (const bad of [BPS_MAX_CREATOR + 1, BPS_OVER_CAP, BPS_NONE_TO_HOLDERS, 10_000]) {
+        await expect(
+          ctx.pad
+            .connect(ctx.creator)
+            .createRewardToken("Yam", "YAM", NO_META, saltFor(`bad-${bad}`), bad),
+          `creatorFeeBps ${bad} must be rejected`
+        ).to.be.revertedWithCustomError(ctx.pad, "InvalidConfig");
+      }
     });
 
     it("the locker refuses the same split, independently of the pad", async () => {
@@ -214,7 +214,7 @@ describe("PotatoRewardToken (fees to holders)", () => {
             ctx.tokenAddr,
             ctx.creator.address,
             ctx.tokenAddr,
-            BPS_NONE_TO_HOLDERS
+            BPS_MAX_CREATOR + 1
           )
       ).to.be.revertedWithCustomError(ctx.locker, "InvalidRewardConfig");
     });
@@ -238,7 +238,7 @@ describe("PotatoRewardToken (fees to holders)", () => {
       expect(await token.positionBound()).to.equal(true);
       expect(await token.locker()).to.equal(locker.target);
       expect(await token.lpTokenId()).to.equal(info.lpTokenId);
-      expect(await token.creatorBps()).to.equal(BPS_EVEN_SPLIT);
+      expect(await token.creatorBps()).to.equal(BPS_MAX_CREATOR);
 
       // The liquidity and range must match the position the locker actually holds,
       // or every fee computation is measured against the wrong position.
@@ -282,7 +282,7 @@ describe("PotatoRewardToken (fees to holders)", () => {
 
       // State is untouched by any of the attempts.
       expect(await token.lpTokenId()).to.equal(info.lpTokenId);
-      expect(await token.creatorBps()).to.equal(BPS_EVEN_SPLIT);
+      expect(await token.creatorBps()).to.equal(BPS_MAX_CREATOR);
     });
   });
 
@@ -694,7 +694,7 @@ describe("PotatoRewardToken (fees to holders)", () => {
       expectClose(toHolders, toTreasury, toTreasury / 1000n, "holders match the treasury half");
     });
 
-    it("2500 bps: creator and holders split the creator half evenly", async () => {
+    it("2500 bps (the cap): creator and holders split the creator half evenly", async () => {
       const ctx = await loadFixture(evenSplit);
       await mine(ANTI_SNIPE_BLOCKS + 1);
       await buy(ctx, ctx.alice, ctx.tokenAddr, ethers.parseEther("2"));
@@ -709,17 +709,17 @@ describe("PotatoRewardToken (fees to holders)", () => {
       );
     });
 
-    it("4900 bps: holders still get a real, non-zero slice at the cap", async () => {
-      const ctx = await loadFixture(capSplit);
+    it("at the cap, holders still take a full quarter of all fees", async () => {
+      const ctx = await loadFixture(evenSplit);
       await mine(ANTI_SNIPE_BLOCKS + 1);
       await buy(ctx, ctx.alice, ctx.tokenAddr, ethers.parseEther("2"));
       await churn(ctx, ctx.carol, ctx.tokenAddr, ethers.parseEther("1"), 2);
 
       const { toTreasury, toCreator, toHolders } = await harvest(ctx);
-      expect(toHolders, "holders are never zero on a reward launch").to.be.gt(0n);
-      // creator 49% : holders 1% of total fees, i.e. 49:1.
-      expectClose(toHolders * 49n, toCreator, toCreator / 100n, "49:1 creator:holder");
+      // The worst split a rewards launch can offer is still an even one.
+      expectClose(toHolders, toCreator, toCreator / 1000n, "creator and holders even at the cap");
       expectClose(toCreator + toHolders, toTreasury, toTreasury / 1000n, "sum is the creator half");
+      expect(toHolders, "holders are never zero on a reward launch").to.be.gt(0n);
     });
 
     it("still burns the launched-token side rather than paying it to holders", async () => {

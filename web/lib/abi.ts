@@ -329,6 +329,19 @@ export const potatoPadAbi = [
   },
   {
     "inputs": [],
+    "name": "MAX_REWARD_CREATOR_FEE_BPS",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "MAX_SALT_TRIES",
     "outputs": [
       {
@@ -2541,6 +2554,19 @@ export const potatoFeeLockerAbi = [
   {
     "inputs": [],
     "name": "CREATOR_FEE_SHARE_BPS",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "MAX_REWARD_CREATOR_FEE_BPS",
     "outputs": [
       {
         "internalType": "uint256",

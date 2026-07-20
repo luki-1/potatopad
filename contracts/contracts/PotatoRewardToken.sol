@@ -319,8 +319,12 @@ contract PotatoRewardToken is PotatoToken, ReentrancyGuard {
     ///      {pendingRewards} and {_accrue} can never disagree.
     function _previewAccrual() internal view returns (uint256 holdersCut, uint256 newGrowth) {
         if (!positionBound) return (0, 0);
-        // Holders take CREATOR_FEE_SHARE_BPS minus the creator's cut. At the cap
-        // that is zero, so skip the pool reads entirely.
+        // Holders take CREATOR_FEE_SHARE_BPS minus the creator's cut, so a cut at
+        // or above the whole creator half would leave them nothing and make the
+        // pool reads pure waste. Unreachable through {PotatoPad}, which caps the
+        // cut at MAX_REWARD_CREATOR_FEE_BPS (half of this) — kept as a cheap guard
+        // because this contract is immutable and cannot assume which pad deployed
+        // it, and because the subtraction below would underflow above the half.
         if (creatorBps >= CREATOR_FEE_SHARE_BPS) return (0, 0);
 
         newGrowth = _feeGrowthInsideWeth();

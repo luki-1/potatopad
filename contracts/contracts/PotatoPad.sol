@@ -88,6 +88,15 @@ contract PotatoPad is ReentrancyGuard {
     uint256 public constant CREATOR_FEE_SHARE_BPS = 5_000; // creator gets half the LP fees
     uint256 internal constant BPS = 10_000;
 
+    /// @notice Largest creator cut a HOLDER-REWARDS launch may take, as bps of
+    ///         TOTAL fees. Holders therefore always receive at least
+    ///         {CREATOR_FEE_SHARE_BPS} minus this — half the creator half, 25% of
+    ///         everything — so the holder-rewards badge always means a materially
+    ///         real share. A creator wanting more than this has {createToken},
+    ///         which takes the whole creator half without the claim.
+    /// @dev Must match {PotatoFeeLocker.MAX_REWARD_CREATOR_FEE_BPS}.
+    uint256 public constant MAX_REWARD_CREATOR_FEE_BPS = 2_500;
+
     /// @notice Anti-snipe max wallet: 2% of supply during the launch window.
     uint256 public constant MAX_WALLET = TOTAL_SUPPLY / 50;
 
@@ -302,18 +311,18 @@ contract PotatoPad is ReentrancyGuard {
     ///         holders earn exactly the volume they held through and keep it even
     ///         if they sell before anyone calls `collect()`.
     ///
-    /// @param creatorFeeBps the creator's cut of TOTAL WETH fees, strictly less than
-    ///        {CREATOR_FEE_SHARE_BPS} (0 = creator takes nothing and holders receive
-    ///        the entire creator half). Fixed at launch and immutable thereafter —
-    ///        the split a buyer sees is the split they keep. The treasury's half is
-    ///        never affected.
-    /// @dev Rejects `creatorFeeBps == CREATOR_FEE_SHARE_BPS`. That value pays holders
-    ///      exactly zero while the token still reports {isHolderRewardToken} and
-    ///      carries the holder-rewards badge everywhere it is listed — on a
-    ///      permissionless pad the badge IS the marketing, so allowing it hands
-    ///      launchers a ready-made deceptive-launch vector. Anyone actually wanting
-    ///      that split already has {createToken}, which is the same thing without the
-    ///      misleading label.
+    /// @param creatorFeeBps the creator's cut of TOTAL WETH fees, capped at
+    ///        {MAX_REWARD_CREATOR_FEE_BPS} (0 = creator takes nothing and holders
+    ///        receive the entire creator half). Fixed at launch and immutable
+    ///        thereafter — the split a buyer sees is the split they keep. The
+    ///        treasury's half is never affected.
+    /// @dev The cap exists because the holder-rewards badge is itself marketing on a
+    ///      permissionless pad. Without it a launcher could take the entire creator
+    ///      half — paying holders nothing — while the token still reports
+    ///      {isHolderRewardToken} and lists as a rewards token everywhere. Bounding
+    ///      the creator at half of their own half guarantees holders a materially
+    ///      real share (>= 25% of all fees) whenever the badge is shown. Anyone who
+    ///      wants more has {createToken}, which is honest about taking it all.
     function createRewardToken(
         string calldata name,
         string calldata symbol,
@@ -321,7 +330,7 @@ contract PotatoPad is ReentrancyGuard {
         bytes32 salt,
         uint16 creatorFeeBps
     ) external payable nonReentrant returns (address token) {
-        if (creatorFeeBps >= CREATOR_FEE_SHARE_BPS) revert InvalidConfig();
+        if (creatorFeeBps > MAX_REWARD_CREATOR_FEE_BPS) revert InvalidConfig();
         return _launch(name, symbol, meta, salt, true, creatorFeeBps);
     }
 

@@ -64,6 +64,13 @@ contract PotatoFeeLocker is IERC721Receiver, ReentrancyGuard {
     uint256 public constant CREATOR_FEE_SHARE_BPS = 5_000; // 50% of collected fees
     uint256 internal constant BPS = 10_000;
 
+    /// @notice Largest creator cut a holder-rewards config may carry, as bps of
+    ///         TOTAL fees — so holders always keep at least the same again.
+    /// @dev Must match {PotatoPad.MAX_REWARD_CREATOR_FEE_BPS}. Enforced here as
+    ///      well as in the pad so a future pad wired to this locker cannot register
+    ///      a config that pays holders a token amount, or nothing at all.
+    uint256 public constant MAX_REWARD_CREATOR_FEE_BPS = 2_500;
+
     /// @notice Burn sink for the launched-token side of fees. Must be a normal
     ///         (unspendable) address — OZ ERC20 reverts on transfers to address(0).
     address internal constant DEAD = 0x000000000000000000000000000000000000dEaD;
@@ -137,11 +144,12 @@ contract PotatoFeeLocker is IERC721Receiver, ReentrancyGuard {
         positions[tokenId] = LockedPosition({creator: creator, token0: token0, token1: token1});
 
         if (rewardToken != address(0)) {
-            // Strictly less than the creator half: anything more would underflow the
-            // split below, and exactly the half pays holders zero while the token
-            // still advertises holder rewards. {PotatoPad.createRewardToken} rejects
-            // it too; this is the backstop for any future pad wired to this locker.
-            if (creatorBps >= CREATOR_FEE_SHARE_BPS) revert InvalidRewardConfig();
+            // Capped well below the creator half: anything above it would let a
+            // launch wear the holder-rewards badge while paying holders little or
+            // nothing, and anything above CREATOR_FEE_SHARE_BPS would underflow the
+            // split below. {PotatoPad.createRewardToken} rejects it too; this is the
+            // backstop for any future pad wired to this locker.
+            if (creatorBps > MAX_REWARD_CREATOR_FEE_BPS) revert InvalidRewardConfig();
             rewardConfig[tokenId] = RewardConfig({token: rewardToken, creatorBps: creatorBps});
         }
 

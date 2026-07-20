@@ -41,13 +41,16 @@ const MAX_UINT = (1n << 256n) - 1n;
 const WALLETS = Number(process.env.STRESS_WALLETS ?? 250);
 const ACTIONS = Number(process.env.STRESS_ACTIONS ?? 3000);
 /**
- * Creator's cut of total WETH fees; holders get 5000 minus this. Must be
- * STRICTLY under 5000 — the pad rejects exactly the creator half, since that
- * pays holders nothing while still advertising holder rewards.
+ * Creator's cut of total WETH fees; holders get 5000 minus this. Capped at 2500
+ * (PotatoPad.MAX_REWARD_CREATOR_FEE_BPS) so a rewards launch always leaves
+ * holders at least a quarter of all fees.
  */
+const MAX_CREATOR_BPS = 2500;
 const CREATOR_FEE_BPS = Number(process.env.STRESS_CREATOR_BPS ?? 1000);
-if (CREATOR_FEE_BPS >= 5000) {
-  throw new Error(`STRESS_CREATOR_BPS must be < 5000 (got ${CREATOR_FEE_BPS})`);
+if (CREATOR_FEE_BPS > MAX_CREATOR_BPS) {
+  throw new Error(
+    `STRESS_CREATOR_BPS must be <= ${MAX_CREATOR_BPS} (got ${CREATOR_FEE_BPS})`
+  );
 }
 
 /** Deterministic PRNG so any failure reproduces exactly: STRESS_SEED=… to vary. */
